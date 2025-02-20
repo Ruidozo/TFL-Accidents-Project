@@ -1,0 +1,121 @@
+# 📌 Terraform Setup Documentation for OLX Car Sales Project
+
+## **🔹 Overview**
+This documentation provides a **step-by-step guide** on how to set up and deploy the infrastructure for the **OLX Car Sales Project** using **Terraform on Google Cloud Platform (GCP).**
+
+## **🔹 Prerequisites**
+Before running Terraform, ensure you have the following installed:
+
+### **1️⃣ Install Required Tools**
+- **Terraform** (>= v1.0) → [Download](https://developer.hashicorp.com/terraform/downloads)
+- **Google Cloud SDK (gcloud CLI)** → [Install](https://cloud.google.com/sdk/docs/install)
+- **Google Cloud Project** (with billing enabled)
+- **IAM permissions** to create resources on GCP
+
+### **2️⃣ Authenticate to GCP**
+Run the following command to authenticate Terraform with your GCP account:
+```bash
+ gcloud auth application-default login
+```
+
+### **3️⃣ Set Up Environment Variables (Optional, but Recommended)**
+Instead of manually entering values, export them in your shell:
+```bash
+export TF_VAR_db_password="your-secure-password"
+export TF_VAR_notification_email="your-email@example.com"
+```
+
+---
+## **🚀 Terraform Setup & Deployment**
+### **Step 1: Clone the Repository**
+Navigate to your workspace and clone the project repository:
+```bash
+git clone https://github.com/your-repo/OLX_car-sales_project.git
+cd OLX_car-sales_project
+```
+
+### **Step 2: Navigate to the Terraform Directory**
+Move into the `terraform-gcp/` directory where all Terraform files are stored:
+```bash
+cd terraform-gcp
+```
+
+### **Step 3: Initialize Terraform**
+Run the following command to initialize Terraform and download required providers:
+```bash
+terraform init
+```
+
+### **Step 4: Review Terraform Plan**
+To check what resources Terraform will create, run:
+```bash
+terraform plan
+```
+This will output the **proposed changes** before applying them.
+
+### **Step 5: Apply Terraform Configuration**
+Run Terraform apply to deploy resources:
+```bash
+terraform apply -auto-approve
+```
+
+📌 **What This Will Create:**
+✅ **Google Cloud Storage (GCS) Bucket** for raw OLX API data storage
+✅ **Cloud SQL (PostgreSQL) Instance** for structured data
+✅ **IAM Roles & Permissions** for secure access
+✅ **Private VPC & Networking Configuration**
+✅ **Monitoring Alerts (SQL CPU, GCS Storage)**
+
+
+### **Step 6: Verify Deployment**
+Once Terraform finishes applying, check outputs:
+```bash
+terraform output
+```
+You should see information like:
+```
+cloud_sql_instance = "car-sales-db"
+cloud_sql_user = "postgres"
+gcs_bucket_name = "olx-car-sales-car-sales-data-lake"
+```
+Confirm that resources were created in the **Google Cloud Console**.
+
+---
+## **🛠 Managing Terraform State & Changes**
+### **Updating Infrastructure**
+If you modify any Terraform files, run:
+```bash
+terraform apply -auto-approve
+```
+
+### **Destroying Resources**
+To completely remove the infrastructure:
+```bash
+terraform destroy -auto-approve
+```
+⚠️ **Ensure you have backed up any necessary data before running this command.**
+
+### **Handling Errors**
+If Terraform cannot delete Cloud SQL due to `deletion_protection`, manually disable it:
+```bash
+gcloud sql instances patch car-sales-db --no-deletion-protection
+terraform destroy -auto-approve
+```
+
+---
+## **📌 Next Steps**
+✅ **Run Data Ingestion with DLT**
+✅ **Schedule OLX API Fetching**
+✅ **Monitor Cloud SQL & Storage Usage**
+
+For any issues, refer to Terraform logs or Google Cloud Console.
+
+---
+## **📧 Need Help?**
+If you encounter issues, check:
+- Terraform Docs: [https://developer.hashicorp.com/terraform/docs](https://developer.hashicorp.com/terraform/docs)
+- GCP Docs: [https://cloud.google.com/docs](https://cloud.google.com/docs)
+- Contact Project Maintainers
+
+Happy Deploying! 🚀
+
