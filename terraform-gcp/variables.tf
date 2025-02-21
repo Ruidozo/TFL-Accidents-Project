@@ -75,3 +75,38 @@ variable "notification_email" {
   description = "The email address to receive monitoring alerts"
   type        = string
 }
+
+variable "vm_name" {
+  description = "Name of the VM instance"
+  type        = string
+  default     = "short-term-setup-vm"
+}
+
+variable "vm_machine_type" {
+  description = "Machine type for the VM"
+  type        = string
+  default     = "e2-standard-2"
+}
+
+variable "vm_disk_size" {
+  description = "Disk size for the VM in GB"
+  type        = number
+  default     = 30
+}
+
+variable "vm_os_image" {
+  description = "OS image for the VM"
+  type        = string
+  default     = "ubuntu-2204-lts"
+}
+
+variable "vm_auto_shutdown" {
+  description = "Enable auto shutdown for the VM"
+  type        = bool
+  default     = true
+}
+
+variable "vm_service_account" {
+  description = "Service account for the VM"
+  type        = string
+}

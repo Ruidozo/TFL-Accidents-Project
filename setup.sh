@@ -22,7 +22,8 @@ terraform apply -auto-approve \
   -var="db_user=${DB_USER}" \
   -var="gcs_admins=${GCS_ADMINS}" \
   -var="notification_email=${NOTIFICATION_EMAIL}" \
-  -var="project_id=${PROJECT_ID}"
+  -var="project_id=${PROJECT_ID}" \
+  -var="vm_service_account=${VM_SERVICE_ACCOUNT}"
 
 echo "Terraform deployment complete. Infrastructure details:"
 terraform output
