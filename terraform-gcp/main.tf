@@ -90,7 +90,7 @@ resource "google_project_iam_binding" "cloud_sql_admins" {
   project = var.project_id
   role    = "roles/cloudsql.admin"
 
-  members = [for user in var.cloud_sql_admins : "user:${user}"]
+  members = var.cloud_sql_admins
 }
 
 resource "google_project_iam_binding" "cloud_sql_clients" {
@@ -168,7 +168,7 @@ resource "google_secret_manager_secret" "cloud_sql_password" {
 }
 
 resource "google_secret_manager_secret" "cloud_sql_private_ip" {
-  secret_id = "cloud-sql-private-ip"
+  secret_id = "cloud-s-private-ip"
   replication {
     auto {}
   }
@@ -250,4 +250,56 @@ resource "google_monitoring_notification_channel" "email" {
   labels = {
     email_address = var.notification_email
   }
+}
+
+resource "google_compute_instance" "short_term_setup_vm" {
+  name         = var.vm_name
+  machine_type = var.vm_machine_type
+  zone         = var.region
+
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/${var.vm_os_image}"
+      size  = var.vm_disk_size
+    }
+  }
+
+  network_interface {
+    network = "default"
+
+    access_config {
+      // Ephemeral public IP
+    }
+  }
+
+  service_account {
+    email  = var.vm_service_account
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+  }
+
+  metadata_startup_script = <<-EOT
+    #!/bin/bash
+    if [ "${var.vm_auto_shutdown}" = true ]; then
+      echo "0 0 * * * /sbin/shutdown -h now" | crontab -
+    fi
+  EOT
+
+  tags = ["http-server"]
+
+  metadata = {
+    enable-oslogin = "TRUE"
+  }
+}
+
+resource "google_compute_firewall" "default" {
+  name    = "allow-http"
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["8080"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["http-server"]
 }

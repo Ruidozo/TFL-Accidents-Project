@@ -49,3 +49,11 @@ output "cloud_sql_admins" {
 output "cloud_sql_clients" {
   value = var.cloud_sql_clients
 }
+
+output "vm_instance_name" {
+  value = google_compute_instance.short_term_setup_vm.name
+}
+
+output "vm_instance_ip" {
+  value = google_compute_instance.short_term_setup_vm.network_interface[0].access_config[0].nat_ip
+}
