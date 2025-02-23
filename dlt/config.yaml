@@ -2,4 +2,5 @@ tfl_api_url: "https://api.tfl.gov.uk/AccidentStats"
 gcs_bucket: tfl-accidents-project-data-lake
 start_year: 2005
 end_year: 2019
-local_storage: "processed_data"  # Define where DLT should save files locally
+local_storage: "processed_data"
+bucket_url: "processed_data"  # ✅ Added bucket_url matching local_storage

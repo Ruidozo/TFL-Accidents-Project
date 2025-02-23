@@ -4,9 +4,9 @@ import yaml
 import os
 import json
 import pandas as pd
+import gzip
 from google.cloud import storage
 from datetime import datetime
-import gzip
 from google.api_core.exceptions import RetryError
 from google.api_core.retry import Retry
 
@@ -46,12 +46,12 @@ def fetch_tfl_data(year):
         return []
 
 def load_tfl_data():
-    """DLT pipeline to fetch, normalize, transform, and load TFL data locally."""
+    """DLT pipeline to fetch, normalize, transform, and load TFL data."""
 
     # Configure DLT output directory
     dlt.config["destination.filesystem.bucket_url"] = LOCAL_STORAGE
 
-    # Create DLT pipeline
+    # Create DLT pipeline with filesystem destination
     pipeline = dlt.pipeline(
         pipeline_name="tfl_ingestion",
         destination="filesystem",
@@ -66,27 +66,36 @@ def load_tfl_data():
         for item in data:
             item["year"] = year  # Add year for partitioning
         all_data.extend(data)
-    
+
     # Run the pipeline and store locally
     print("🚀 Storing data locally in JSON format...")
-    pipeline.run(all_data, table_name="tfl_accidents")
+    pipeline.run(all_data, table_name="tfl_accidents_raw", write_disposition="replace")
 
-    # Move and transform data
+
+    # Convert to CSV
     move_and_transform_data()
-
-    print("✅ Data ingestion completed! Now uploading CSVs to GCS...")
 
     # Upload CSVs to GCS
     upload_to_gcs()
 
 def move_and_transform_data():
     """Move JSONL files, convert to CSV, and delete JSONL after processing."""
-    DLT_OUTPUT_DIR = os.path.join(LOCAL_STORAGE, "tfl_accidents")
+    # Automatically find the DLT output directory
+    possible_dirs = [d for d in os.listdir(LOCAL_STORAGE) if d.startswith("tfl_accidents")]
+    if possible_dirs:
+        DLT_OUTPUT_DIR = os.path.join(LOCAL_STORAGE, possible_dirs[0])
+    else:
+        print(f"❌ ERROR: No valid DLT output directory found in {LOCAL_STORAGE}.")
+        exit(1)
+
+    print(f"✅ Found DLT output directory: {DLT_OUTPUT_DIR}")
+
 
     if not os.path.exists(DLT_OUTPUT_DIR):
         print(f"❌ DLT output directory '{DLT_OUTPUT_DIR}' not found. Check if the pipeline ran successfully.")
         exit(1)
 
+    jsonl_files = []
     for root, _, files in os.walk(DLT_OUTPUT_DIR):
         for file in files:
             if file.endswith(".jsonl"):
@@ -95,14 +104,21 @@ def move_and_transform_data():
 
                 # Move the JSONL file
                 os.rename(src_path, dest_path)
+                jsonl_files.append(dest_path)
 
-                # Convert JSONL to CSV
-                csv_path = os.path.join(CSV_STORAGE, file.replace(".jsonl", ".csv"))
-                jsonl_to_csv(dest_path, csv_path)
+    print(f"✅ Found {len(jsonl_files)} JSONL files. Converting to CSV...")
 
-                # Delete JSONL file after transformation
-                os.remove(dest_path)
-                print(f"🗑️ Deleted {dest_path} after conversion to CSV.")
+    for jsonl_file in jsonl_files:
+        try:
+            # Convert JSONL to CSV
+            csv_path = os.path.join(CSV_STORAGE, os.path.basename(jsonl_file).replace(".jsonl", ".csv"))
+            jsonl_to_csv(jsonl_file, csv_path)
+
+            # Delete JSONL file after transformation
+            os.remove(jsonl_file)
+            print(f"🗑️ Deleted {jsonl_file} after conversion to CSV.")
+        except Exception as e:
+            print(f"❌ ERROR: Failed to convert {jsonl_file} to CSV. Exception: {e}")
 
     print("✅ Data transformed to CSV and JSONL deleted!")
 
@@ -129,7 +145,8 @@ def upload_to_gcs():
         file_path = os.path.join(LOCAL_STORAGE, file)
         if file.endswith(".jsonl") and os.path.isfile(file_path):
             blob = bucket.blob(f"raw/jsonl/{file}")
-            blob.upload_from_filename(file_path)
+            blob.chunk_size = 10 * 1024 * 1024  # ✅ Set chunk size correctly
+            blob.upload_from_filename(file_path, timeout=300)
             print(f"✅ Uploaded RAW JSONL: {file} to GCS.")
 
     # Upload CSV to Processed Data Lake
@@ -137,8 +154,10 @@ def upload_to_gcs():
         file_path = os.path.join(CSV_STORAGE, file)
         if os.path.isfile(file_path):
             blob = bucket.blob(f"processed/csv/{file}")
-            blob.upload_from_filename(file_path)
+            blob.chunk_size = 10 * 1024 * 1024  # ✅ Set chunk size correctly
+            blob.upload_from_filename(file_path, timeout=300)
             print(f"✅ Uploaded PROCESSED CSV: {file} to GCS.")
+
 
 
 if __name__ == "__main__":
