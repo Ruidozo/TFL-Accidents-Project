@@ -195,3 +195,5 @@ cython_debug/
 notes/
 scripts/
 tfl-accidents.code-workspace
+dlt/raw_data/
+dlt/processed_data/
