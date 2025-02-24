@@ -1,0 +1,7 @@
+dlt
+google-cloud-storage
+pyyaml
+requests
+pandas
+python-dotenv
+psycopg2-binary
