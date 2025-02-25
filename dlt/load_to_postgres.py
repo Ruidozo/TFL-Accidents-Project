@@ -8,6 +8,7 @@ import shutil
 import json
 import ast
 from io import StringIO
+from google.cloud import storage
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -23,8 +24,10 @@ DB_PARAMS = {
     "password": os.getenv("DB_PASSWORD")
 }
 
-# Local storage configuration
-LOCAL_STORAGE = os.getenv("LOCAL_STORAGE", "downloaded_data")
+# Google Cloud Storage (GCS) configuration
+GCS_BUCKET = os.getenv("GCS_BUCKET")
+GCS_RAW_PATH = os.getenv("GCS_RAW_PATH")
+LOCAL_STORAGE = os.getenv("LOCAL_STORAGE", "dlt/processed_data/raw/csv")
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -88,24 +91,39 @@ def sanitize_json_field(field):
         logging.warning(f"⚠️ Could not parse JSON field: {field}")
         return None   
 
-def get_local_files():
-    """List all GZipped CSV files in the LOCAL_STORAGE directory."""
-    local_files = [f for f in os.listdir(LOCAL_STORAGE) if f.endswith(".csv.gz")]
-    logging.info(f"📂 Found {len(local_files)} compressed CSV files in `{LOCAL_STORAGE}`.")
-    return local_files
 
-def extract_gz_file(gz_file_path):
-    """Extract a GZipped CSV file."""
-    local_csv_path = gz_file_path.replace(".gz", "")
+def get_gcs_files():
+    """List all GZipped CSV files in GCS."""
+    client = storage.Client()
+    bucket = client.bucket(GCS_BUCKET)
+    blobs = list(bucket.list_blobs(prefix=GCS_RAW_PATH))
+
+    gzipped_files = [blob.name for blob in blobs if blob.name.endswith(".csv.gz")]
+    logging.info(f"📦 Found {len(gzipped_files)} compressed CSV files in GCS.")
+    return gzipped_files
+
+def download_gcs_file(file_path):
+    """Download and extract a GZipped CSV file from GCS."""
+    client = storage.Client()
+    bucket = client.bucket(GCS_BUCKET)
+    blob = bucket.blob(file_path)
+
+    local_gz_path = os.path.join(LOCAL_STORAGE, os.path.basename(file_path))
+    local_csv_path = local_gz_path.replace(".gz", "")
 
     try:
-        with gzip.open(gz_file_path, "rb") as f_in, open(local_csv_path, "wb") as f_out:
+        logging.info(f"📥 Downloading `{file_path}` from GCS...")
+        blob.download_to_filename(local_gz_path)
+
+        # Extract GZ file
+        with gzip.open(local_gz_path, "rb") as f_in, open(local_csv_path, "wb") as f_out:
             shutil.copyfileobj(f_in, f_out)
-        os.remove(gz_file_path)  # Remove compressed file after extraction
+        os.remove(local_gz_path)  # Remove compressed file after extraction
+
         logging.info(f"✅ Extracted `{local_csv_path}`.")
         return local_csv_path
     except Exception as e:
-        logging.error(f"❌ Failed to extract `{gz_file_path}`: {e}")
+        logging.error(f"❌ Failed to download `{file_path}` from GCS: {e}")
         return None
 
 def clean_and_transform_data(df):
@@ -140,6 +158,36 @@ def clean_and_transform_data(df):
             df[json_col] = df[json_col].apply(sanitize_json_field)
 
     return df
+
+def create_table(table_name="public.stg_tfl_accidents"):
+    """Create PostgreSQL table if it does not exist."""
+    conn = connect_db()
+    if not conn:
+        return
+
+    try:
+        create_table_sql = f"""
+            CREATE TABLE IF NOT EXISTS {table_name} (
+                accident_id INTEGER PRIMARY KEY,
+                lat FLOAT,
+                lon FLOAT,
+                location TEXT,
+                accident_date TIMESTAMP,
+                severity TEXT,
+                borough TEXT,
+                casualties TEXT, -- Stored as JSON string
+                vehicles TEXT -- Stored as JSON string
+            );
+        """
+        cur = conn.cursor()
+        cur.execute(create_table_sql)
+        conn.commit()
+        cur.close()
+        logging.info(f"✅ Table `{table_name}` is ready.")
+    except Exception as e:
+        logging.error(f"❌ Error creating table `{table_name}`: {e}")
+    finally:
+        conn.close()
 
 def load_csv_in_batches(file_path, table_name="public.stg_tfl_accidents", batch_size=10000):
     """Load CSV file into PostgreSQL in batches."""
@@ -183,20 +231,28 @@ def load_csv_in_batches(file_path, table_name="public.stg_tfl_accidents", batch_
         conn.close()
 
 def process_pipeline():
-    """End-to-end pipeline: recreate table, process local CSV files, and load them into PostgreSQL."""
+    """End-to-end pipeline: recreate table, and load CSV files from local storage into PostgreSQL."""
     recreate_table()  # Drop and recreate the table with the correct schema
 
-    # List all GZipped CSV files in LOCAL_STORAGE
-    local_files = get_local_files()
+    # List all GZipped CSV files in the local storage directory
+    local_files = [f for f in os.listdir(LOCAL_STORAGE) if f.endswith(".csv.gz")]
 
     if not local_files:
-        logging.warning("⚠️ No GZipped CSV files found in LOCAL_STORAGE.")
+        logging.warning("⚠️ No GZipped CSV files found in local storage.")
         return
 
     for local_file in local_files:
         local_gz_path = os.path.join(LOCAL_STORAGE, local_file)
-        local_csv_path = extract_gz_file(local_gz_path)
-        if not local_csv_path:
+        local_csv_path = local_gz_path.replace(".gz", "")
+
+        # Extract GZ file
+        try:
+            logging.info(f"📥 Extracting `{local_gz_path}`...")
+            with gzip.open(local_gz_path, "rb") as f_in, open(local_csv_path, "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+            logging.info(f"✅ Extracted `{local_csv_path}`.")
+        except Exception as e:
+            logging.error(f"❌ Failed to extract `{local_gz_path}`: {e}")
             continue
 
         # Load CSV in batches
@@ -204,6 +260,7 @@ def process_pipeline():
         load_csv_in_batches(local_csv_path)
 
 if __name__ == "__main__":
-    logging.info("🚀 Starting CSV ingestion pipeline from LOCAL_STORAGE...")
+    logging.info("🚀 Starting CSV ingestion pipeline...")
+    logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
     process_pipeline()
     logging.info("🎯 Pipeline finished.")
