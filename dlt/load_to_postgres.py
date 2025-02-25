@@ -27,7 +27,7 @@ DB_PARAMS = {
 # Google Cloud Storage (GCS) configuration
 GCS_BUCKET = os.getenv("GCS_BUCKET")
 GCS_RAW_PATH = os.getenv("GCS_RAW_PATH")
-LOCAL_STORAGE = os.getenv("LOCAL_STORAGE", "dlt/processed_data/raw/csv")
+LOCAL_STORAGE = os.getenv("LOCAL_STORAGE")
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
